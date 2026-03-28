@@ -626,9 +626,9 @@ class VoiceServerChannel(BaseChannel):
                             else:
                                 state["silent_frames"] = 0
                                 
-                            # 50 consecutive frames * 60ms = 3 seconds of silence
+                            # 30 consecutive frames * 60ms = 1.8 seconds of silence
                             # AND ensure we buffered at least 0.5s of audio to avoid instant warm-up crashes
-                            if state["silent_frames"] >= 50 and len(state["pcm_buffer"]) >= 16000 * 2 * 0.5:
+                            if state["silent_frames"] >= 30 and len(state["pcm_buffer"]) >= 16000 * 2 * 0.5:
                                 logger.info(f"Silence detected from {client_id} (rms: {rms:.1f}). Auto-stopping.")
                                 state["is_listening"] = False
                                 import asyncio
