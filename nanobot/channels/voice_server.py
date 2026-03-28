@@ -715,6 +715,19 @@ class VoiceServerChannel(BaseChannel):
             if not text or not text.strip():
                 logger.info(f"Transcription empty for {client_id}")
                 await send_tts_stop()
+                # Force device to exit listening state properly
+                try:
+                    await ws.send(json.dumps({
+                        "type": "listen",
+                        "state": "stop"
+                    }))
+                    await ws.send(json.dumps({
+                        "type": "listen",
+                        "state": "detect",
+                        "text": ""
+                    }))
+                except Exception:
+                    pass
                 return
                 
             logger.info(f"STT: '{text}' from {client_id}")
