@@ -633,9 +633,9 @@ class VoiceServerChannel(BaseChannel):
                                 state["is_listening"] = False
                                 import asyncio
                                 asyncio.create_task(self._process_audio_buffer(client_id))
-                            # Auto-stop failsafe fallback after 8 seconds 
-                            elif len(state["pcm_buffer"]) >= 16000 * 2 * 8:
-                                logger.warning(f"Client {client_id} streamed 8s without stop. Forcing stop.")
+                            # Auto-stop failsafe fallback after 15 seconds 
+                            elif len(state["pcm_buffer"]) >= 16000 * 2 * 15:
+                                logger.warning(f"Client {client_id} streamed 15s without stop. Forcing stop.")
                                 state["is_listening"] = False
                                 # Run processing outside current cycle async
                                 import asyncio
