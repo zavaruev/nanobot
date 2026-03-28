@@ -409,6 +409,10 @@ class VoiceServerChannel(BaseChannel):
 
             # Handle root path for connectivity checks
             if clean_path == "/":
+                # If it's a websocket upgrade, let the handshake proceed
+                if request.headers.get("Upgrade", "").lower() == "websocket":
+                    return None
+                
                 data = b"OK\n"
                 headers = Headers([
                     ("Content-Type", "text/plain"),
