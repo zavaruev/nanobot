@@ -407,6 +407,16 @@ class VoiceServerChannel(BaseChannel):
             if not device_id:
                 device_id = "unknown"
 
+            # Handle root path for connectivity checks
+            if clean_path == "/":
+                data = b"OK\n"
+                headers = Headers([
+                    ("Content-Type", "text/plain"),
+                    ("Content-Length", str(len(data))),
+                    ("Connection", "close")
+                ])
+                return Response(200, "OK", headers, data)
+
             if clean_path == "/ota":
                 # XiaoZhi firmware checks this path for updates and configuration
                 import time
@@ -714,17 +724,11 @@ class VoiceServerChannel(BaseChannel):
             
             if not text or not text.strip():
                 logger.info(f"Transcription empty for {client_id}")
-                await send_tts_stop()
                 # Force device to exit listening state properly
                 try:
                     await ws.send(json.dumps({
-                        "type": "listen",
+                        "type": "tts",
                         "state": "stop"
-                    }))
-                    await ws.send(json.dumps({
-                        "type": "listen",
-                        "state": "detect",
-                        "text": ""
                     }))
                 except Exception:
                     pass
