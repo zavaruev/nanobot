@@ -473,13 +473,6 @@ class VoiceServerChannel(BaseChannel):
                     logger.error(f"  Firmware file NOT FOUND: {firmware_path}")
                     return Response(404, "Not Found", Headers([("Connection", "close")]), b"Not Found")
 
-            if clean_path == "" or clean_path == "/":
-                headers = Headers([
-                    ("Content-Type", "text/plain"),
-                    ("Connection", "close")
-                ])
-                return Response(200, "OK", headers, b"XiaoZhi Voice Server (Nanobot)")
-
             # For everything else, proceed to WebSocket handshake
             return None
             
