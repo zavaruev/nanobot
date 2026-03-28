@@ -14,12 +14,13 @@ import websockets
 from loguru import logger
 from urllib.parse import urlparse, parse_qs
 import collections
-import audioop
+import collections
+import struct
+import math
 
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
-from nanobot.channels.registry import register_channel
 
 from pydantic import BaseModel
 
@@ -36,6 +37,7 @@ class VoiceServerConfig(BaseModel):
     allowFrom: list[str] | None = None
     force_ota: bool = False
     firmware_path: str = "/root/.nanobot/firmware.bin"
+    show_debug_on_display: bool = True
 
 
 class WhisperTranscriber:
@@ -72,6 +74,26 @@ class WhisperTranscriber:
             logger.error(f"Whisper transcription error: {e}")
             return ""
 
+def calculate_rms(pcm_data: bytes) -> float:
+    """Calculate RMS value for 16-bit Mono PCM data without audioop."""
+    if not pcm_data:
+        return 0.0
+    # Interpret bytes as signed 16-bit integers (little-endian: '<')
+    count = len(pcm_data) // 2
+    if count == 0:
+        return 0.0
+    
+    # Use struct.unpack_from to efficiently process chunks or the whole buffer
+    # For short frames (like 60ms/1920 bytes), unpacking everything is fine.
+    fmt = f"<{count}h"
+    try:
+        samples = struct.unpack(fmt, pcm_data)
+        sum_squares = sum(s * s for s in samples)
+        return math.sqrt(sum_squares / count)
+    except Exception:
+        return 0.0
+
+
 # Since opuslib might not be installed in all environments
 try:
     import opuslib
@@ -79,7 +101,6 @@ except ImportError:
     opuslib = None
 
 
-@register_channel("voice_server")
 class VoiceServerChannel(BaseChannel):
     """
     WebSocket server for voice-enabled devices.
@@ -602,13 +623,12 @@ class VoiceServerChannel(BaseChannel):
                             state["pcm_buffer"].extend(pcm_frame)
                             
                             # VAD/Silence Auto-Stop
-                            import audioop
-                            rms = audioop.rms(pcm_frame, 2)
+                            rms = calculate_rms(pcm_frame)
                             
                             if "silent_frames" not in state:
                                 state["silent_frames"] = 0
                                 
-                            if rms < 300:  # Threshold for silence, adjust if needed
+                            if rms < self.config.rms_threshold:  # Use configured threshold instead of hardcoded 300
                                 state["silent_frames"] += 1
                             else:
                                 state["silent_frames"] = 0
@@ -616,7 +636,7 @@ class VoiceServerChannel(BaseChannel):
                             # 20 consecutive frames * 60ms = 1.2 seconds of silence
                             # AND ensure we buffered at least 0.5s of audio to avoid instant warm-up crashes
                             if state["silent_frames"] >= 20 and len(state["pcm_buffer"]) >= 16000 * 2 * 0.5:
-                                logger.info(f"Silence detected from {client_id} (rms: {rms}). Auto-stopping.")
+                                logger.info(f"Silence detected from {client_id} (rms: {rms:.1f}). Auto-stopping.")
                                 state["is_listening"] = False
                                 import asyncio
                                 asyncio.create_task(self._process_audio_buffer(client_id))
@@ -706,8 +726,8 @@ class VoiceServerChannel(BaseChannel):
                 
             logger.info(f"STT: '{text}' from {client_id}")
             
-            # Send STT to device display
-            if ws and state:
+            # Send STT to device display (if enabled)
+            if ws and state and self.config.show_debug_on_display:
                 try:
                     await ws.send(json.dumps({
                         "type": "stt",
@@ -715,6 +735,8 @@ class VoiceServerChannel(BaseChannel):
                     }))
                 except Exception as e:
                     logger.error(f"Failed to send stt text to display: {e}")
+            elif not self.config.show_debug_on_display:
+                logger.debug(f"STT display suppressed by config for {client_id}")
             
             # Send to bus
             msg = InboundMessage(
