@@ -20,7 +20,6 @@ import audioop
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
-from nanobot.channels.registry import register_channel
 
 from pydantic import BaseModel
 
@@ -104,7 +103,6 @@ except ImportError:
     opuslib = None
 
 
-@register_channel("voice_server")
 class VoiceServerChannel(BaseChannel):
     """
     WebSocket server for voice-enabled devices.
