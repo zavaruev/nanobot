@@ -21,9 +21,10 @@ from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class VoiceServerConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
     enabled: bool = False
     port: int = 18790
     host: str = "0.0.0.0"
@@ -34,9 +35,10 @@ class VoiceServerConfig(BaseModel):
     transcription_model: str = ""
     rms_threshold: float = 30.0
     allowFrom: list[str] | None = None
-    force_ota: bool = False
     firmware_path: str = "/root/.nanobot/firmware.bin"
     show_debug_on_display: bool = True
+    speaker_id_url: str = "http://192.168.22.111:8001/identify"
+    enroll_url: str = "http://192.168.22.111:8001/enroll"
 
 
 class WhisperTranscriber:
@@ -470,15 +472,25 @@ class VoiceServerChannel(BaseChannel):
             async def _identify_speaker(wav_path):
                 try:
                     with open(wav_path, "rb") as f:
-                        resp = await self._speaker_client.post("http://192.168.22.111:8001/identify", files={"file": f})
-                        return resp.json().get("identified", "Unknown") if resp.status_code == 200 else "Unknown"
-                except: return "Unknown"
+                        resp = await self._speaker_client.post(self.config.speaker_id_url, files={"file": f})
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            identified = data.get("identified", "Unknown")
+                            score = data.get("score", 0)
+                            logger.info(f"Speaker ID: identified='{identified}' score={score:.2f}")
+                            return identified
+                        else:
+                            logger.warn(f"Speaker ID error: code={resp.status_code} body={resp.text[:100]}")
+                            return "Unknown"
+                except Exception as e:
+                    logger.error(f"Speaker ID request failed: {e}")
+                    return "Unknown"
 
             text_task = asyncio.create_task(self.transcriber.transcribe(temp_wav_path))
             speaker_task = asyncio.create_task(_identify_speaker(temp_wav_path))
             
             text = await text_task
-            try: speaker = await asyncio.wait_for(speaker_task, timeout=2.0)
+            try: speaker = await asyncio.wait_for(speaker_task, timeout=5.0)
             except: speaker = "Unknown"
             
             if not text or not text.strip():
@@ -503,7 +515,7 @@ class VoiceServerChannel(BaseChannel):
                 try:
                     with open(temp_wav_path, 'rb') as f:
                         async with httpx.AsyncClient() as client:
-                            await client.post('http://192.168.22.111:8001/enroll', files={'file': f}, data={'user_id': enroll_name}, timeout=10.0)
+                            await client.post(self.config.enroll_url, files={'file': f}, data={'user_id': enroll_name}, timeout=10.0)
                             await self.send(OutboundMessage(channel=self.name, chat_id=client_id, content=f'Запомнила тебя как {enroll_name}!' if not en_enroll_match else f'Remembered you as {enroll_name}!'))
                 except: pass
                 return

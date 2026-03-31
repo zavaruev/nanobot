@@ -19,6 +19,7 @@ from nanobot.agent.memory import MemoryConsolidator
 from nanobot.agent.runner import AgentRunSpec, AgentRunner
 from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.cron import CronTool
+from nanobot.agent.tools.hass_camera import HassCameraSnapshotTool
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from nanobot.agent.tools.message import MessageTool
@@ -262,6 +263,14 @@ class AgentLoop:
             self.tools.register(
                 CronTool(self.cron_service, default_timezone=self.context.timezone or "UTC")
             )
+            
+        # Register Home Assistant camera tool if MCP config is present
+        if self._mcp_servers and (ha_cfg := self._mcp_servers.get("homeAssistant")):
+            ha_url = ha_cfg.url
+            ha_headers = ha_cfg.headers
+            ha_token = ha_headers.get("Authorization", "").replace("Bearer ", "")
+            if ha_url and ha_token:
+                self.tools.register(HassCameraSnapshotTool(ha_url=ha_url, ha_token=ha_token))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""

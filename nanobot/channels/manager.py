@@ -41,7 +41,12 @@ class ChannelManager:
         groq_key = self.config.providers.groq.api_key
 
         for name, cls in discover_all().items():
+            # In Pydantic V2, extra fields go into model_extra.
+            # getattr() doesn't find them if they aren't explicitly defined.
             section = getattr(self.config.channels, name, None)
+            if section is None and self.config.channels.model_extra:
+                section = self.config.channels.model_extra.get(name)
+
             if section is None:
                 continue
             enabled = (
